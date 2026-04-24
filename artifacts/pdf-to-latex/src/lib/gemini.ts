@@ -485,19 +485,20 @@ export function assembleLatex(
     }
   }
 
-  // Rebuild \thongtin so it only references sections that still exist
-  // (otherwise \ref{tn} on a removed label produces "??" in the PDF).
-  const partsLabel: Record<string, string> = {
-    tn: "câu trắc nghiệm",
-    ds: "câu đúng/sai",
-    tln: "câu trả lời ngắn",
-    tl: "câu tự luận",
-  };
-  const thongtinParts = presentLabels.map(
-    (l) => `\\ref{${l}} ${partsLabel[l]}`,
+  // Rebuild \thongtin keeping the original 4-part structure and outer parentheses.
+  // For sections that no longer exist in the document (their \label was stripped),
+  // replace `\ref{xx}` with the literal `0` so the PDF shows "0 câu …" instead of "??".
+  const presentSet = new Set(presentLabels);
+  const orderedParts: { key: string; name: string }[] = [
+    { key: "tn", name: "câu trắc nghiệm" },
+    { key: "ds", name: "câu đúng/sai" },
+    { key: "tln", name: "câu trả lời ngắn" },
+    { key: "tl", name: "câu tự luận" },
+  ];
+  const thongtinParts = orderedParts.map(
+    (p) => `${presentSet.has(p.key) ? `\\ref{${p.key}}` : "0"} ${p.name}`,
   );
-  const newThongtin =
-    thongtinParts.length > 0 ? `(${thongtinParts.join(", ")})` : "";
+  const newThongtin = `(${thongtinParts.join(", ")})`;
   doc = doc.replace(/\\def\\thongtin\{.*?\}/, `\\def\\thongtin{${newThongtin}}`);
 
   return doc;
