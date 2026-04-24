@@ -42,6 +42,11 @@ import {
   BookOpen,
   CheckCircle2,
   AlertCircle,
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { ScrollArea } from "./components/ui/scroll-area";
 import {
@@ -90,11 +95,13 @@ function FileList({
   setFiles,
   height = "h-[260px]",
   emptyText = "Chưa có tệp nào.",
+  onPreview,
 }: {
   files: FileData[];
   setFiles: React.Dispatch<React.SetStateAction<FileData[]>>;
   height?: string;
   emptyText?: string;
+  onPreview?: (file: FileData) => void;
 }) {
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
@@ -131,10 +138,14 @@ function FileList({
             onDragEnter={() => (dragOverItem.current = index)}
             onDragEnd={handleSort}
             onDragOver={(e) => e.preventDefault()}
-            className="flex items-center gap-3 bg-background border border-border/60 rounded-xl p-2.5 shadow-sm cursor-grab hover:border-primary transition-colors"
+            className="flex items-center gap-3 bg-background border border-border/60 rounded-xl p-2.5 shadow-sm cursor-grab hover:border-primary transition-colors group/row"
           >
             <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <div className="h-10 w-10 flex-shrink-0 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+            <div
+              className="h-10 w-10 flex-shrink-0 bg-muted rounded-lg overflow-hidden flex items-center justify-center relative cursor-pointer"
+              onClick={() => onPreview?.(file)}
+              title="Nhấn để xem trước"
+            >
               {file.file.type.startsWith("image/") ? (
                 <img
                   src={`data:${file.file.type};base64,${file.base64}`}
@@ -144,9 +155,16 @@ function FileList({
               ) : (
                 <FileText className="h-5 w-5 text-muted-foreground" />
               )}
+              <div className="absolute inset-0 bg-primary/70 rounded-lg opacity-0 group-hover/row:opacity-100 flex items-center justify-center transition-opacity">
+                <Eye className="h-4 w-4 text-white" />
+              </div>
             </div>
-            <div className="flex-1 min-w-0 flex flex-col">
-              <span className="text-sm font-medium truncate">
+            <div
+              className="flex-1 min-w-0 flex flex-col cursor-pointer"
+              onClick={() => onPreview?.(file)}
+              title="Nhấn để xem trước"
+            >
+              <span className="text-sm font-medium truncate hover:text-primary transition-colors">
                 {file.file.name}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -160,7 +178,10 @@ function FileList({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={() => removeFile(index)}
+              onClick={(e) => {
+                e.stopPropagation();
+                removeFile(index);
+              }}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -168,6 +189,108 @@ function FileList({
         ))}
       </div>
     </ScrollArea>
+  );
+}
+
+// ---------- File preview modal ----------
+
+function FilePreviewModal({
+  file,
+  onClose,
+}: {
+  file: FileData | null;
+  onClose: () => void;
+}) {
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    if (file) setZoom(1);
+  }, [file]);
+
+  if (!file) return null;
+
+  const isImage = file.file.type.startsWith("image/");
+  const dataUrl = `data:${file.file.type};base64,${file.base64}`;
+
+  return (
+    <Dialog open={!!file} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-5xl w-full h-[90vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden">
+        <DialogHeader className="px-5 py-3 border-b flex-shrink-0">
+          <div className="flex items-center gap-3">
+            {isImage ? (
+              <ImageIcon className="h-5 w-5 text-primary shrink-0" />
+            ) : (
+              <FileText className="h-5 w-5 text-primary shrink-0" />
+            )}
+            <DialogTitle className="text-base truncate flex-1 text-left">
+              {file.file.name}
+            </DialogTitle>
+            {isImage && (
+              <div className="flex items-center gap-1 ml-auto shrink-0">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+                  disabled={zoom <= 0.25}
+                  title="Thu nhỏ"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <span className="text-sm w-14 text-center tabular-nums font-medium">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setZoom((z) => Math.min(5, z + 0.25))}
+                  disabled={zoom >= 5}
+                  title="Phóng to"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setZoom(1)}
+                  title="Đặt lại"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-auto bg-muted/30">
+          {isImage ? (
+            <div className="min-h-full flex items-center justify-center p-4">
+              <img
+                src={dataUrl}
+                alt={file.file.name}
+                style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "center center",
+                  transition: "transform 0.15s ease",
+                  maxWidth: zoom <= 1 ? "100%" : "none",
+                }}
+                className="rounded shadow-md"
+                draggable={false}
+              />
+            </div>
+          ) : (
+            <iframe
+              src={dataUrl}
+              title={file.file.name}
+              className="w-full h-full border-0"
+              style={{ minHeight: "calc(90vh - 64px)" }}
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -195,7 +318,7 @@ function UploadZone({
   const zoneRef = useRef<HTMLDivElement | null>(null);
 
   const handleFiles = useCallback(
-    async (incoming: File[]) => {
+    async (incoming: File[], fromClipboard = false) => {
       if (incoming.length === 0) return;
       const filtered = incoming.filter((f) => ACCEPT_MIME.test(f.type));
       if (filtered.length === 0) {
@@ -207,11 +330,41 @@ function UploadZone({
         return;
       }
 
-      const newOnes: FileData[] = [];
+      // Process all files to base64 first
+      const processed: { file: File; base64: string; isScreenshot: boolean }[] = [];
       for (const f of filtered) {
-        newOnes.push({ file: f, base64: await fileToBase64(f) });
+        // A clipboard-pasted image (not a real file) is a "screenshot"
+        const isScreenshot = fromClipboard && f.type.startsWith("image/");
+        const base64 = await fileToBase64(f);
+        processed.push({ file: f, base64, isScreenshot });
       }
-      setFiles((prev) => [...prev, ...newOnes]);
+
+      setFiles((prev) => {
+        const existingNames = new Set(prev.map((fd) => fd.file.name));
+        const toAdd: FileData[] = [];
+        let nextIndex = prev.length;
+
+        for (const { file, base64, isScreenshot } of processed) {
+          if (isScreenshot) {
+            // Always add clipboard screenshots, assign a positional name
+            nextIndex++;
+            const ext =
+              file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+            const renamedFile = new File([file], `image${nextIndex}.${ext}`, {
+              type: file.type,
+            });
+            toAdd.push({ file: renamedFile, base64 });
+          } else {
+            // Deduplicate real files by name
+            if (!existingNames.has(file.name)) {
+              existingNames.add(file.name);
+              toAdd.push({ file, base64 });
+            }
+          }
+        }
+
+        return [...prev, ...toAdd];
+      });
     },
     [setFiles, toast],
   );
@@ -247,7 +400,7 @@ function UploadZone({
       }
       if (collected.length > 0) {
         e.preventDefault();
-        await handleFiles(collected);
+        await handleFiles(collected, true);
       }
     },
     [handleFiles],
@@ -445,6 +598,15 @@ function Home() {
   const [answerFiles, setAnswerFiles] = useState<FileData[]>([]);
   const [solutionFiles, setSolutionFiles] = useState<FileData[]>([]);
 
+  // Preview modal
+  const [previewFile, setPreviewFile] = useState<FileData | null>(null);
+
+  // Critical error modal
+  const [criticalError, setCriticalError] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
   // Modes
   const [answerMode, setAnswerMode] = useState<AnswerMode>(
     () =>
@@ -511,11 +673,36 @@ function Home() {
         });
       }
     } catch (err: any) {
-      toast({
-        title: "Không thể kết nối Gemini",
-        description: err.message || String(err),
-        variant: "destructive",
-      });
+      const msg: string = err?.message || String(err);
+      if (
+        msg.includes("API key") ||
+        msg.includes("API_KEY") ||
+        msg.includes("invalid key") ||
+        msg.includes("401") ||
+        msg.includes("403")
+      ) {
+        setCriticalError({
+          title: "CÓ LỖI XUẤT HIỆN Ở API KEY!",
+          message: "VUI LÒNG KIỂM TRA LẠI",
+        });
+      } else if (
+        msg.includes("Failed to fetch") ||
+        msg.includes("NetworkError") ||
+        msg.includes("network error") ||
+        msg.includes("ERR_NETWORK") ||
+        msg.includes("ERR_INTERNET")
+      ) {
+        setCriticalError({
+          title: "CÓ LỖI MẤT KẾT NỐI XUẤT HIỆN!",
+          message:
+            "VUI LÒNG TRUY CẬP TRỰC TIẾP TRANG GEMINI ĐỂ KIỂM TRA",
+        });
+      } else {
+        setCriticalError({
+          title: "CÓ LỖI NỘI BỘ XUẤT HIỆN, VUI LÒNG KIỂM TRA LẠI",
+          message: msg,
+        });
+      }
       setModels([]);
     } finally {
       setCheckingKey(false);
@@ -612,11 +799,53 @@ function Home() {
         description: "Đã chuyển đổi xong sang LaTeX.",
       });
     } catch (err: any) {
-      toast({
-        title: "Lỗi chuyển đổi",
-        description: err.message || String(err),
-        variant: "destructive",
-      });
+      const msg: string = err?.message || String(err);
+      if (
+        msg.includes("API key") ||
+        msg.includes("API_KEY") ||
+        msg.includes("invalid key") ||
+        msg.includes("401") ||
+        msg.includes("403") ||
+        msg.toLowerCase().includes("api key not valid") ||
+        msg.toLowerCase().includes("invalid api key")
+      ) {
+        setCriticalError({
+          title: "CÓ LỖI XUẤT HIỆN Ở API KEY!",
+          message: "VUI LÒNG KIỂM TRA LẠI",
+        });
+      } else if (
+        msg.includes("Failed to fetch") ||
+        msg.includes("NetworkError") ||
+        msg.includes("network error") ||
+        msg.includes("ERR_NETWORK") ||
+        msg.includes("ERR_INTERNET") ||
+        msg.toLowerCase().includes("net::err")
+      ) {
+        setCriticalError({
+          title: "CÓ LỖI MẤT KẾT NỐI XUẤT HIỆN!",
+          message:
+            "VUI LÒNG TRUY CẬP TRỰC TIẾP TRANG GEMINI ĐỂ KIỂM TRA",
+        });
+      } else if (
+        msg.includes("413") ||
+        msg.toLowerCase().includes("too large") ||
+        msg.toLowerCase().includes("payload") ||
+        msg.toLowerCase().includes("quota") ||
+        msg.toLowerCase().includes("resource exhausted") ||
+        msg.toLowerCase().includes("size limit") ||
+        msg.toLowerCase().includes("overloaded")
+      ) {
+        setCriticalError({
+          title: "CÓ LỖI XUẤT HIỆN Ở VIỆC XỬ LÝ TRONG GEMINI!",
+          message:
+            "VUI LÒNG KIỂM TRA LẠI CÁC FILE PDF/ẢNH ĐƯỢC ĐÍNH KÈM",
+        });
+      } else {
+        setCriticalError({
+          title: "CÓ LỖI NỘI BỘ XUẤT HIỆN, VUI LÒNG KIỂM TRA LẠI",
+          message: msg,
+        });
+      }
     } finally {
       setIsConverting(false);
     }
@@ -783,6 +1012,7 @@ function Home() {
               setFiles={setQuestionFiles}
               height="h-[260px]"
               emptyText="Chưa có tệp câu hỏi nào."
+              onPreview={setPreviewFile}
             />
           </div>
         </section>
@@ -962,6 +1192,7 @@ function Home() {
               setFiles={setAnswerFiles}
               height="h-[170px]"
               emptyText="Chưa có tệp/ảnh đáp án sẵn có."
+              onPreview={setPreviewFile}
             />
           </Card>
 
@@ -987,6 +1218,7 @@ function Home() {
               setFiles={setSolutionFiles}
               height="h-[170px]"
               emptyText="Chưa có tệp/ảnh lời giải sẵn có."
+              onPreview={setPreviewFile}
             />
           </Card>
         </section>
@@ -1011,8 +1243,27 @@ function Home() {
         </section>
 
         {/* OUTPUT AREA */}
-        <div className="flex flex-col gap-4 flex-1 mt-2 min-h-[400px]">
-          <h2 className="text-lg font-medium">Kết quả LaTeX</h2>
+        <div className="flex flex-col gap-3 flex-1 mt-2 min-h-[400px]">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-medium">Kết quả LaTeX</h2>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyToClipboard}
+                disabled={!latexOutput}
+              >
+                <Copy className="h-4 w-4 mr-1.5" /> Sao chép
+              </Button>
+              <Button
+                size="sm"
+                onClick={downloadFile}
+                disabled={!latexOutput}
+              >
+                <Save className="h-4 w-4 mr-1.5" /> Lưu tệp
+              </Button>
+            </div>
+          </div>
           <div className="flex-1 relative rounded-xl border bg-muted/20 overflow-hidden group shadow-inner">
             <textarea
               className="w-full h-full min-h-[400px] p-6 font-mono text-sm leading-relaxed bg-transparent resize-none focus:outline-none"
@@ -1022,22 +1273,45 @@ function Home() {
               spellCheck={false}
             />
           </div>
-
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={copyToClipboard}
-              disabled={!latexOutput}
-            >
-              <Copy className="h-5 w-5 mr-2" /> Sao chép
-            </Button>
-            <Button size="lg" onClick={downloadFile} disabled={!latexOutput}>
-              <Save className="h-5 w-5 mr-2" /> Lưu tệp
-            </Button>
-          </div>
         </div>
       </main>
+
+      {/* File preview modal */}
+      <FilePreviewModal
+        file={previewFile}
+        onClose={() => setPreviewFile(null)}
+      />
+
+      {/* Critical error center-screen modal */}
+      <Dialog
+        open={!!criticalError}
+        onOpenChange={(open) => !open && setCriticalError(null)}
+      >
+        <DialogContent className="sm:max-w-[480px] rounded-2xl border-destructive/50">
+          <DialogHeader className="items-center text-center gap-3 pt-2">
+            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-destructive leading-snug text-center">
+              {criticalError?.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-2">
+            <p className="text-sm font-medium text-foreground whitespace-pre-line">
+              {criticalError?.message}
+            </p>
+          </div>
+          <DialogFooter className="justify-center">
+            <Button
+              variant="destructive"
+              onClick={() => setCriticalError(null)}
+              className="min-w-[120px]"
+            >
+              Đã hiểu
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Settings Modal */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
