@@ -1,0 +1,203 @@
+\documentclass[12pt,a4paper,twoside]{article}
+\usepackage[top=1.5cm, bottom=2cm, left=1.5cm, right=1cm]{geometry}
+\renewcommand{\baselinestretch}{1.25}
+
+% Gói chính
+\usepackage{amssymb, mathtools, thmtools, xcolor, nameref}
+\usepackage[hidelinks,unicode]{hyperref}
+
+% Gói bổ sung
+\usepackage{mathrsfs, fontawesome5, fancyhdr, enumitem, multirow, makecell, esvect, titlesec, array, bm}
+\usepackage[most]{tcolorbox}
+
+% Gói vẽ hình
+\usepackage{graphicx, pgfplots, tkz-euclide, tikz-3dplot, tikz, tkz-tab, venndiagram}
+\usetikzlibrary{calc, angles, intersections, quotes, arrows.meta, decorations.pathmorphing, patterns.meta, shadings, backgrounds, shapes.geometric, decorations.text, decorations.markings}
+\pgfplotsset{compat=1.9}
+\usepgfplotslibrary{fillbetween}
+
+% Hệ hoặc; hệ và
+\newcommand{\hehoac}[1]{
+        \left[\begin{aligned}#1\end{aligned}\right.}
+\newcommand{\heva}[1]{
+        \left\{\begin{aligned}#1\end{aligned}\right.}
+
+% Header/Footer
+\fancyhf{}
+\pagestyle{fancy}
+\fancyfoot[RO]{\textbf{Trang \thepage/\pageref{sotrang}}}
+\fancyfoot[LO]{\textbf{Nguyễn Trọng Bình - \,\faPhoneSquare\,0384470445}}
+\fancyfoot[LE]{\textbf{Trang \thepage/\pageref{sotrang}}}
+\fancyfoot[RE]{\textbf{Nguyễn Trọng Bình - \,\faPhoneSquare\,0384470445}}
+
+% Độ dày đường kẻ footer/header
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% Khoảng cách header/footer
+\setlength{\headheight}{1pt}
+\setlength{\footskip}{45pt}
+
+% Môi trường trắc nghiệm
+\usepackage[dethi]{ex_test}
+%\usepackage[color]{ex_test}
+%\usepackage[loigiai]{ex_test}
+%\usepackage[solcolor]{ex_test}
+%\usepackage[book]{ex_test}
+
+% Môi trường tự luận
+\newtheorem{bt}[ex]{\color{blue}\textbf{Câu}}
+
+% Tuỳ chỉnh môi trường đề thi
+\renewcommand{\nameex}{\color{blue}\bf Câu}
+\renewcommand{\loigiaiEX}{\textbf{\centerline{Lời giải}}}
+\renewcommand{\FalseEX}{\stepcounter{dapan}{\textbf{\color{blue}\Alph{dapan}.}}}
+\renewcommand{\FalseTF}{\stepcounter{dapan}\textbf{\color{blue}\DapAnTF\sepTF}}
+
+% Thay lời giải bằng hàng dấu chấm
+%\dotlineans{5}{ex}
+%\dotlinefull{ex}
+%\dotlineans{5}{bt}
+%\dotlinefull{bt}
+
+% Tạo biến đếm cho câu hỏi
+\usepackage{etoolbox}
+\newcounter{demEX}
+\newcounter{demBT}
+\newif\ifCounting % Cờ cho biến đếm
+
+\AtBeginEnvironment{ex}{
+        \ifCounting
+        \stepcounter{demEX}
+        \fi} % Chỉ đếm khi cờ được bật
+\AtBeginEnvironment{bt}{
+        \ifCounting
+        \stepcounter{demBT}
+        \fi} % Chỉ đếm khi cờ được bật
+
+% Khu vực đếm EX
+\newenvironment{kvdemEX}[1]
+{% Bắt đầu môi trường
+        \def\nhanEX{#1}
+        \setcounter{demEX}{0}
+        \Countingtrue
+}
+{% Kết thúc môi trường
+        \Countingfalse
+        \setcounter{demEX}{\value{demEX}-1}
+        \refstepcounter{demEX}
+        \label{\nhanEX}}
+
+% Khu vực đếm BT
+\newenvironment{kvdemBT}[1]
+{% Bắt đầu môi trường
+        \def\nhanBT{#1}
+        \setcounter{demBT}{0}
+        \Countingtrue
+}
+{% Kết thúc môi trường
+        \Countingfalse
+        \setcounter{demBT}{\value{demBT}-1}
+        \refstepcounter{demBT}
+        \label{\nhanBT}
+}
+
+% Tiêu đề
+\newcommand{\mybox}[1]{\tcbox[tikznode,enhanced,frame empty,borderline={0.2mm}{0mm}{dashed},arc=5mm,halign=center]{#1}}
+\newcommand{\tieude}{
+        \begin{tcolorbox}[arc=8mm,boxrule=1pt,halign=center]
+                {\bfseries\tende}\\
+                {\bfseries\thongtin}\vspace{0.2cm}\\
+                \makebox[\linewidth][c]{
+                        \mybox{
+                                \textbf{Hướng dẫn}\\
+                                \textbf{Nguyễn Trọng Bình}
+                        }
+                        \hfill
+                        \mybox{
+                                \textbf{Thời gian: \thoigian}\\
+                                (Không kể thời gian phát đề)
+                        }
+                        \hfill
+                        \mybox{
+                                \textbf{Đề số: \made}\\
+                                \textbf{(Đề có \pageref{sotrang} trang)}
+                        }
+                }
+        \end{tcolorbox}
+}
+
+% Thông số tiêu đề của đề thi
+\def\tende{demo}
+\def\thongtin{(\ref{tn} câu trắc nghiệm, 0 câu đúng/sai, 0 câu trả lời ngắn, 0 câu tự luận)}
+\def\made{02}
+\def\thoigian{40 phút}
+
+\begin{document}
+        \tieude
+        \setlength{\parindent}{0pt}
+        
+        \begin{kvdemEX}{tn}
+                \Opensolutionfile{ans}[ans/tn]
+                % Câu 1
+\begin{ex}
+    Đồ thị hàm số $y=ax$ ($a \neq 0$) là một đường thẳng luôn đi qua
+    \choice
+    {\True gốc tọa độ $O(0;0)$.}
+    {điểm $A(1;0)$.}
+    {điểm $B(0;1)$.}
+    {điểm $C(1;1)$.}
+    \loigiai{Với $x=0$ thì $y=a \cdot 0 = 0$, nên đồ thị luôn đi qua gốc tọa độ $O(0;0)$.}
+\end{ex}
+% Câu 2
+\begin{ex}
+    Hệ số góc của đường thẳng $y=x-2$ là
+    \choice
+    {$-2$.}
+    {$2$.}
+    {$-1$.}
+    {\True $1$.}
+    \loigiai{Đường thẳng có dạng $y=ax+b$, hệ số góc là $a$. Ở đây $y=1x-2$ nên hệ số góc là $1$.}
+\end{ex}
+% Câu 3
+\begin{ex}
+    Phương trình nào sau đây là phương trình bậc nhất một ẩn?
+    \choice
+    {$0x+5=0$.}
+    {$2x^2-3=0$.}
+    {$\dfrac{3}{x}-2=0$.}
+    {\True $2x+1=0$.}
+    \loigiai{Phương trình bậc nhất một ẩn có dạng $ax+b=0$ với $a \neq 0$. Chỉ có $2x+1=0$ thỏa mãn.}
+\end{ex}
+% Câu 4
+\begin{ex}
+    Phương trình $3-2x=0$ có nghiệm là
+    \choice
+    {$x=3$.}
+    {$x=\dfrac{2}{3}$.}
+    {\True $x=\dfrac{3}{2}$.}
+    {$x=\dfrac{-3}{2}$.}
+    \loigiai{Ta có $3-2x=0 \Leftrightarrow 2x=3 \Leftrightarrow x=\dfrac{3}{2}$.}
+\end{ex}
+% Câu 5
+\begin{ex}
+    Cho $\Delta ABC$ có $DE \parallel BC$ như hình dưới đây.
+    Chèn hình
+    Theo định lí Thalès, ta có:
+    \choice
+    {\True $\dfrac{AC}{CE} = \dfrac{AB}{AD}$.}
+    {$\dfrac{CE}{EA} = \dfrac{BD}{DA}$.}
+    {$\dfrac{AC}{CE} = \dfrac{BC}{CD}$.}
+    {$\dfrac{AC}{BC} = \dfrac{CD}{CE}$.}
+    \loigiai{Theo hệ quả định lí Thalès, ta có $\dfrac{AD}{AB} = \dfrac{AE}{AC} = \dfrac{DE}{BC}$. Suy ra $\dfrac{AB}{AD} = \dfrac{AC}{AE}$. Vì $AE = AC - CE$ nên tỉ lệ đúng là $\dfrac{AC}{CE} = \dfrac{AB}{AD}$ (tính chất tỉ lệ thức).}
+\end{ex}
+                \Closesolutionfile{ans}
+        \end{kvdemEX}
+        
+        
+        
+        
+        \label{sotrang}
+        \centering{\rule[0.5ex]{2cm}{1pt} \textbf{HẾT} \rule[0.5ex]{2cm}{1pt}}
+        
+\end{document}
