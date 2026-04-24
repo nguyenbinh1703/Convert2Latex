@@ -175,7 +175,7 @@ function FileList({
             >
               <FileThumbnail file={file} />
               <div className="absolute inset-0 bg-primary/70 rounded-lg opacity-0 group-hover/row:opacity-100 flex items-center justify-center transition-opacity duration-150">
-                <Eye className="h-4 w-4 text-white" />
+                <Eye className="h-4.5 w-4.5 text-white" />
               </div>
             </div>
             {/* Name + size — wraps if long */}
@@ -501,7 +501,7 @@ function UploadZone({
       />
       <div className="p-2 bg-primary/10 rounded-full text-primary">
         <ImageIcon
-          className={variant === "tall" ? "h-7 w-7" : "h-5 w-5"}
+          className={variant === "tall" ? "h-8 w-8" : "h-5 w-5"}
         />
       </div>
       {title && (
@@ -1002,10 +1002,10 @@ function Home() {
             />
 
             <div className="relative flex-1 max-w-[260px]">
-              <KeyRound className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+              <KeyRound className="absolute left-2.5 top-2 h-4.5 w-4.5 text-muted-foreground" />
               <Input
                 type="password"
-                placeholder="Nhập khóa API từ aistudio..."
+                placeholder="Nhập API key"
                 className="pl-9 h-9"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
@@ -1034,7 +1034,7 @@ function Home() {
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="flex flex-col gap-3">
             <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
-              <Upload className="h-4.5 w-4.5 text-primary" />
+              <Upload className="h-5 w-5 text-primary" />
               Tải tệp lên
             </h2>
             <UploadZone
@@ -1049,7 +1049,7 @@ function Home() {
 
           <div className="flex flex-col gap-3">
             <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
-              <ListChecks className="h-4.5 w-4.5 text-primary" />
+              <ListChecks className="h-5 w-5 text-primary" />
               Danh sách tệp đã tải lên
               <Badge variant="secondary" className="ml-1">
                 {questionFiles.length}
@@ -1070,7 +1070,7 @@ function Home() {
           {/* Zone 1: Thiết lập đề thi */}
           <Card className="p-5 flex flex-col gap-3 rounded-2xl">
             <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
-              <Settings className="h-4.5 w-4.5 text-primary" />
+              <Settings className="h-5 w-5 text-primary" />
               Vùng thiết lập đề thi
             </h2>
 
@@ -1084,7 +1084,7 @@ function Home() {
                 }}
               >
                 <span className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
+                  <FileText className="h-4.5 w-4.5 text-primary" />
                   Tinh chỉnh đề
                 </span>
                 <ChevronDown className="h-4 w-4 opacity-50 -rotate-90" />
@@ -1097,7 +1097,7 @@ function Home() {
                     className="justify-between h-10 rounded-xl text-left"
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                      <CheckCircle2 className="h-4.5 w-4.5 text-primary shrink-0" />
                       <span className="truncate">Thiết lập đáp án</span>
                     </span>
                     <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
@@ -1140,7 +1140,7 @@ function Home() {
                     className="justify-between h-10 rounded-xl text-left"
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <BookOpen className="h-4 w-4 text-primary shrink-0" />
+                      <BookOpen className="h-4.5 w-4.5 text-primary shrink-0" />
                       <span className="truncate">Thiết lập lời giải</span>
                     </span>
                     <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
@@ -1221,7 +1221,7 @@ function Home() {
           {/* Zone 2: Đáp án sẵn có */}
           <Card className="p-5 flex flex-col gap-3 rounded-2xl">
             <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
-              <CheckCircle2 className="h-4.5 w-4.5 text-primary" />
+              <CheckCircle2 className="h-5 w-5 text-primary" />
               Đáp án sẵn có
               <Badge variant="secondary" className="ml-1">
                 {answerFiles.length}
@@ -1247,7 +1247,7 @@ function Home() {
           {/* Zone 3: Lời giải sẵn có */}
           <Card className="p-5 flex flex-col gap-3 rounded-2xl">
             <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
-              <BookOpen className="h-4.5 w-4.5 text-primary" />
+              <BookOpen className="h-5 w-5 text-primary" />
               Lời giải sẵn có
               <Badge variant="secondary" className="ml-1">
                 {solutionFiles.length}
@@ -1301,14 +1301,14 @@ function Home() {
                 onClick={copyToClipboard}
                 disabled={!latexOutput}
               >
-                <Copy className="h-4 w-4 mr-1.5" /> Sao chép
+                <Copy className="h-4.5 w-4.5 mr-1.5" /> Sao chép
               </Button>
               <Button
                 size="sm"
                 onClick={downloadFile}
                 disabled={!latexOutput}
               >
-                <Save className="h-4 w-4 mr-1.5" /> Lưu tệp
+                <Save className="h-4.5 w-4.5 mr-1.5" /> Lưu tệp
               </Button>
             </div>
           </div>
