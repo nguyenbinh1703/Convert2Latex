@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "PDF/Ảnh sang LaTeX"
+version = "1.0.0"
+id = "artifacts/pdf-to-latex"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18100
+
+[services.development]
+run = "pnpm --filter @workspace/pdf-to-latex run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pdf-to-latex", "run", "build" ]
+publicDir = "artifacts/pdf-to-latex/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18100"
+BASE_PATH = "/"
