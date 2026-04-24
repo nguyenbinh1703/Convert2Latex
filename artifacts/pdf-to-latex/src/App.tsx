@@ -45,7 +45,6 @@ import {
   Eye,
   ZoomIn,
   ZoomOut,
-  RotateCcw,
   AlertTriangle,
 } from "lucide-react";
 import { ScrollArea } from "./components/ui/scroll-area";
@@ -87,6 +86,33 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 const ACCEPT_MIME = /^(application\/pdf|image\/(png|jpe?g|webp))$/;
+
+// Hook: create a stable object URL for a File, revoking when it changes/unmounts
+function useObjectUrl(file: File | null | undefined): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) { setUrl(null); return; }
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => { URL.revokeObjectURL(u); setUrl(null); };
+  }, [file]);
+  return url;
+}
+
+// Thumbnail that uses an object URL to avoid embedding large base64 strings in the DOM
+function FileThumbnail({ file }: { file: FileData }) {
+  const url = useObjectUrl(file.file);
+  const isImage = file.file.type.startsWith("image/");
+  return (
+    <div className="h-10 w-10 flex-shrink-0 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+      {isImage && url ? (
+        <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+      ) : (
+        <FileText className="h-5 w-5 text-muted-foreground" />
+      )}
+    </div>
+  );
+}
 
 // ---------- File list with drag reorder ----------
 
@@ -138,53 +164,50 @@ function FileList({
             onDragEnter={() => (dragOverItem.current = index)}
             onDragEnd={handleSort}
             onDragOver={(e) => e.preventDefault()}
-            className="flex items-center gap-3 bg-background border border-border/60 rounded-xl p-2.5 shadow-sm cursor-grab hover:border-primary transition-colors group/row"
+            className="flex items-start gap-2.5 bg-background border border-border/60 rounded-xl p-2.5 shadow-sm cursor-grab hover:border-primary transition-colors group/row"
           >
-            <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-2.5" />
+            {/* Thumbnail with hover eye overlay */}
             <div
-              className="h-10 w-10 flex-shrink-0 bg-muted rounded-lg overflow-hidden flex items-center justify-center relative cursor-pointer"
+              className="relative flex-shrink-0 cursor-pointer mt-0.5"
               onClick={() => onPreview?.(file)}
               title="Nhấn để xem trước"
             >
-              {file.file.type.startsWith("image/") ? (
-                <img
-                  src={`data:${file.file.type};base64,${file.base64}`}
-                  alt="thumbnail"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <FileText className="h-5 w-5 text-muted-foreground" />
-              )}
-              <div className="absolute inset-0 bg-primary/70 rounded-lg opacity-0 group-hover/row:opacity-100 flex items-center justify-center transition-opacity">
+              <FileThumbnail file={file} />
+              <div className="absolute inset-0 bg-primary/70 rounded-lg opacity-0 group-hover/row:opacity-100 flex items-center justify-center transition-opacity duration-150">
                 <Eye className="h-4 w-4 text-white" />
               </div>
             </div>
+            {/* Name + size — wraps if long */}
             <div
-              className="flex-1 min-w-0 flex flex-col cursor-pointer"
+              className="flex-1 min-w-0 flex flex-col gap-0.5 cursor-pointer py-0.5"
               onClick={() => onPreview?.(file)}
               title="Nhấn để xem trước"
             >
-              <span className="text-sm font-medium truncate hover:text-primary transition-colors">
+              <span className="text-sm font-medium break-all leading-snug hover:text-primary transition-colors">
                 {file.file.name}
               </span>
               <span className="text-xs text-muted-foreground">
-                {(file.file.size / 1024 / 1024).toFixed(2)} MB
+                {file.file.size >= 1024 * 1024
+                  ? `${(file.file.size / 1024 / 1024).toFixed(2)} MB`
+                  : `${(file.file.size / 1024).toFixed(0)} KB`}
               </span>
             </div>
-            <div className="text-xs text-muted-foreground tabular-nums px-1">
-              {index + 1}
+            {/* Position badge + delete — always visible */}
+            <div className="flex items-center gap-1 flex-shrink-0 mt-1.5">
+              <span className="text-xs text-muted-foreground tabular-nums px-1">{index + 1}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeFile(index);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeFile(index);
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
           </div>
         ))}
       </div>
@@ -202,91 +225,116 @@ function FilePreviewModal({
   onClose: () => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
+  // Create / revoke object URL whenever the file changes — works for any size
   useEffect(() => {
-    if (file) setZoom(1);
+    if (!file) {
+      setObjectUrl(null);
+      return;
+    }
+    setZoom(1);
+    const url = URL.createObjectURL(file.file);
+    setObjectUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+      setObjectUrl(null);
+    };
   }, [file]);
 
   if (!file) return null;
 
   const isImage = file.file.type.startsWith("image/");
-  const dataUrl = `data:${file.file.type};base64,${file.base64}`;
 
   return (
     <Dialog open={!!file} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl w-full h-[90vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden">
-        <DialogHeader className="px-5 py-3 border-b flex-shrink-0">
-          <div className="flex items-center gap-3">
-            {isImage ? (
-              <ImageIcon className="h-5 w-5 text-primary shrink-0" />
-            ) : (
-              <FileText className="h-5 w-5 text-primary shrink-0" />
-            )}
-            <DialogTitle className="text-base truncate flex-1 text-left">
-              {file.file.name}
-            </DialogTitle>
-            {isImage && (
-              <div className="flex items-center gap-1 ml-auto shrink-0">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-                  disabled={zoom <= 0.25}
-                  title="Thu nhỏ"
-                >
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <span className="text-sm w-14 text-center tabular-nums font-medium">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setZoom((z) => Math.min(5, z + 0.25))}
-                  disabled={zoom >= 5}
-                  title="Phóng to"
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setZoom(1)}
-                  title="Đặt lại"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-auto bg-muted/30">
+      <DialogContent
+        hideClose
+        className="max-w-5xl w-full h-[90vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden"
+      >
+        {/* Header toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-background flex-shrink-0">
           {isImage ? (
-            <div className="min-h-full flex items-center justify-center p-4">
-              <img
-                src={dataUrl}
-                alt={file.file.name}
-                style={{
-                  transform: `scale(${zoom})`,
-                  transformOrigin: "center center",
-                  transition: "transform 0.15s ease",
-                  maxWidth: zoom <= 1 ? "100%" : "none",
-                }}
-                className="rounded shadow-md"
-                draggable={false}
-              />
+            <ImageIcon className="h-4 w-4 text-primary shrink-0" />
+          ) : (
+            <FileText className="h-4 w-4 text-primary shrink-0" />
+          )}
+          <DialogTitle className="text-sm font-semibold truncate flex-1 text-left">
+            {file.file.name}
+          </DialogTitle>
+
+          {/* Zoom controls — images only */}
+          {isImage && (
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+                disabled={zoom <= 0.25}
+                title="Thu nhỏ"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs w-12 text-center tabular-nums font-medium select-none">
+                {Math.round(zoom * 100)}%
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setZoom((z) => Math.min(5, z + 0.25))}
+                disabled={zoom >= 5}
+                title="Phóng to"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </Button>
+              <div className="w-px h-5 bg-border mx-1" />
+            </div>
+          )}
+
+          {/* Close button — clearly labelled, separated */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-3 gap-1.5 shrink-0 text-muted-foreground hover:text-foreground hover:bg-destructive/10"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+            <span className="text-xs font-medium">Đóng</span>
+          </Button>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-auto bg-muted/20 will-change-scroll">
+          {isImage ? (
+            <div className="min-h-full flex items-center justify-center p-6">
+              {objectUrl && (
+                <img
+                  src={objectUrl}
+                  alt={file.file.name}
+                  style={{
+                    transform: `scale(${zoom})`,
+                    transformOrigin: "center center",
+                    transition: "transform 0.12s cubic-bezier(0.4,0,0.2,1)",
+                    maxWidth: zoom <= 1 ? "100%" : "none",
+                    willChange: "transform",
+                  }}
+                  className="rounded-lg shadow-lg"
+                  draggable={false}
+                />
+              )}
             </div>
           ) : (
-            <iframe
-              src={dataUrl}
-              title={file.file.name}
-              className="w-full h-full border-0"
-              style={{ minHeight: "calc(90vh - 64px)" }}
-            />
+            objectUrl && (
+              <iframe
+                key={objectUrl}
+                src={objectUrl}
+                title={file.file.name}
+                className="w-full h-full border-0"
+                style={{ minHeight: "calc(90vh - 52px)" }}
+              />
+            )
           )}
         </div>
       </DialogContent>
@@ -922,10 +970,10 @@ function Home() {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
               <FileText className="h-5 w-5" />
             </div>
-            <h1 className="text-xl font-semibold hidden md:block tracking-tight text-primary">
+            <h1 className="text-[1.15rem] font-bold hidden md:block tracking-tight text-primary">
               Trình chuyển đổi PDF / Ảnh sang LaTeX
             </h1>
-            <h1 className="text-xl font-semibold md:hidden tracking-tight text-primary">
+            <h1 className="text-[1.1rem] font-bold md:hidden tracking-tight text-primary">
               PDF → LaTeX
             </h1>
           </div>
@@ -981,12 +1029,12 @@ function Home() {
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 py-8 flex flex-col gap-6">
+      <main className="flex-1 container mx-auto px-4 py-6 flex flex-col gap-6 max-w-[1440px]">
         {/* TOP ROW: Upload | File list */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="flex flex-col gap-3">
-            <h2 className="text-lg font-medium flex items-center gap-2">
-              <Upload className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+              <Upload className="h-4.5 w-4.5 text-primary" />
               Tải tệp lên
             </h2>
             <UploadZone
@@ -1000,8 +1048,8 @@ function Home() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <h2 className="text-lg font-medium flex items-center gap-2">
-              <ListChecks className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+              <ListChecks className="h-4.5 w-4.5 text-primary" />
               Danh sách tệp đã tải lên
               <Badge variant="secondary" className="ml-1">
                 {questionFiles.length}
@@ -1018,11 +1066,11 @@ function Home() {
         </section>
 
         {/* MIDDLE ROW: Settings | Answer files | Solution files */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Zone 1: Thiết lập đề thi */}
           <Card className="p-5 flex flex-col gap-3 rounded-2xl">
-            <h2 className="text-lg font-medium flex items-center gap-2">
-              <Settings className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+              <Settings className="h-4.5 w-4.5 text-primary" />
               Vùng thiết lập đề thi
             </h2>
 
@@ -1172,8 +1220,8 @@ function Home() {
 
           {/* Zone 2: Đáp án sẵn có */}
           <Card className="p-5 flex flex-col gap-3 rounded-2xl">
-            <h2 className="text-lg font-medium flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+              <CheckCircle2 className="h-4.5 w-4.5 text-primary" />
               Đáp án sẵn có
               <Badge variant="secondary" className="ml-1">
                 {answerFiles.length}
@@ -1198,8 +1246,8 @@ function Home() {
 
           {/* Zone 3: Lời giải sẵn có */}
           <Card className="p-5 flex flex-col gap-3 rounded-2xl">
-            <h2 className="text-lg font-medium flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+              <BookOpen className="h-4.5 w-4.5 text-primary" />
               Lời giải sẵn có
               <Badge variant="secondary" className="ml-1">
                 {solutionFiles.length}
@@ -1245,7 +1293,7 @@ function Home() {
         {/* OUTPUT AREA */}
         <div className="flex flex-col gap-3 flex-1 mt-2 min-h-[400px]">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-medium">Kết quả LaTeX</h2>
+            <h2 className="text-base font-semibold text-foreground/90">Kết quả LaTeX</h2>
             <div className="flex gap-2">
               <Button
                 variant="outline"
