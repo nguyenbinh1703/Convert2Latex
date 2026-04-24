@@ -991,8 +991,8 @@ function Home() {
           </Card>
         </section>
 
-        {/* CONVERT BUTTON + INFO */}
-        <section className="flex flex-col items-center gap-3 py-2">
+        {/* CONVERT BUTTON */}
+        <section className="flex justify-center py-2">
           <Button
             size="lg"
             className="h-16 px-12 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all min-w-[260px]"
@@ -1008,26 +1008,6 @@ function Home() {
               "CHUYỂN ĐỔI"
             )}
           </Button>
-          <div className="flex flex-wrap gap-2 justify-center">
-            <Badge
-              variant="outline"
-              className="text-sm py-1 px-3 bg-background font-medium"
-            >
-              Tên đề: {settings.tende}
-            </Badge>
-            <Badge
-              variant="outline"
-              className="text-sm py-1 px-3 bg-background font-medium"
-            >
-              Thời gian: {settings.thoigian} phút
-            </Badge>
-            <Badge
-              variant="outline"
-              className="text-sm py-1 px-3 bg-background font-medium"
-            >
-              Mã đề: {settings.made}
-            </Badge>
-          </div>
         </section>
 
         {/* OUTPUT AREA */}

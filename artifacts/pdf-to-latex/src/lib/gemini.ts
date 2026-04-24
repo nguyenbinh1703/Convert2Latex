@@ -53,38 +53,116 @@ export async function listGeminiModels(apiKey: string): Promise<string[]> {
     .map((m) => m.name.replace(/^models\//, ""));
 }
 
+interface VerifyResult {
+  ok: boolean;
+  status?: number;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 /**
- * Verify a model is reachable AND the key has quota for it.
- * Uses countTokens (fast, free) instead of generateContent.
- * Honors AbortSignal so callers can cap latency.
+ * Single low-level probe. Resolves with a VerifyResult instead of throwing
+ * so the caller can distinguish "really unavailable" from "transient/rate-limit".
+ */
+async function probeModel(
+  apiKey: string,
+  model: string,
+  signal?: AbortSignal,
+): Promise<VerifyResult> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // Minimal real generation: 1 token output, deterministic, single candidate.
+  const body = {
+    contents: [{ parts: [{ text: "Hi" }] }],
+    generationConfig: {
+      maxOutputTokens: 1,
+      temperature: 0,
+      candidateCount: 1,
+    },
+  };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (res.ok) return { ok: true, status: res.status };
+    const errData = await res.json().catch(() => ({}));
+    return {
+      ok: false,
+      status: res.status,
+      errorCode: errData?.error?.status,
+      errorMessage: errData?.error?.message,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      errorMessage: err?.message || String(err),
+    };
+  }
+}
+
+/**
+ * Verify a model is reachable AND the key has quota for it RIGHT NOW.
+ * Uses a real generateContent call (1 token) with a one-shot retry on
+ * transient 429/503 to cancel out collateral throttling from concurrent checks.
+ * Throws on definitive failure so the picker can show the proper toast.
  */
 export async function verifyModel(
   apiKey: string,
   model: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:countTokens?key=${apiKey}`;
-  const body = { contents: [{ parts: [{ text: "ping" }] }] };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const msg = errData?.error?.message || `Lỗi HTTP: ${res.status}`;
-    throw new Error(msg);
+  const r1 = await probeModel(apiKey, model, signal);
+  if (r1.ok) return;
+  // Retry once for transient throttling / overloaded responses.
+  if (r1.status === 429 || r1.status === 503) {
+    await new Promise((res) => setTimeout(res, 1200));
+    const r2 = await probeModel(apiKey, model, signal);
+    if (r2.ok) return;
+    throw new Error(
+      r2.errorMessage || `Lỗi HTTP: ${r2.status ?? "không phản hồi"}`,
+    );
   }
+  throw new Error(
+    r1.errorMessage || `Lỗi HTTP: ${r1.status ?? "không phản hồi"}`,
+  );
+}
+
+/** Run async tasks with a fixed concurrency cap. */
+async function withConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const runners: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(limit, items.length); i++) {
+    runners.push(
+      (async () => {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= items.length) return;
+          results[idx] = await worker(items[idx], idx);
+        }
+      })(),
+    );
+  }
+  await Promise.all(runners);
+  return results;
 }
 
 /**
- * Returns the set of models actually usable right now.
+ * Returns the set of models actually usable right now (real generateContent works).
  * Strategy for speed + accuracy:
  *  1. One network call to list metadata.
- *  2. Pre-filter by name (skip embedding/tts/imagen/etc. and obvious non-chat).
- *  3. In parallel, ping countTokens for each candidate with a 3.5s timeout.
- *     countTokens is a cheap, quota-free reachability check that fails fast on 404/403.
+ *  2. Pre-filter by name (skip embedding / tts / imagen / aqa / learnlm / thinking).
+ *  3. Probe each candidate with a real generateContent call (1-token output) using
+ *     concurrency 4 and a 7s timeout. On 429/503 the probe retries once with a short
+ *     backoff so models aren't false-negatived by collateral rate-limit during the sweep.
+ *  4. Only models whose probe succeeds end up in the returned list — these are guaranteed
+ *     to be reachable and to still have quota at this moment.
  */
 export async function listUsableGeminiModels(
   apiKey: string,
@@ -98,9 +176,13 @@ export async function listUsableGeminiModels(
     )
     .map((m) => m.name.replace(/^models\//, ""));
 
-  const PER_CALL_TIMEOUT_MS = 3500;
-  const checks = await Promise.all(
-    candidates.map(async (m) => {
+  const PER_CALL_TIMEOUT_MS = 7000;
+  const CONCURRENCY = 4;
+
+  const verdicts = await withConcurrency(
+    candidates,
+    CONCURRENCY,
+    async (m) => {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), PER_CALL_TIMEOUT_MS);
       try {
@@ -111,9 +193,10 @@ export async function listUsableGeminiModels(
       } finally {
         clearTimeout(t);
       }
-    }),
+    },
   );
-  return checks.filter((m): m is string => m !== null);
+
+  return verdicts.filter((m): m is string => m !== null);
 }
 
 const TASK_BLOCK = `1. Đọc kĩ từng câu hỏi trong đề.
