@@ -177,21 +177,15 @@ interface UploadZoneProps {
   files: FileData[];
   setFiles: React.Dispatch<React.SetStateAction<FileData[]>>;
   inputId: string;
-  accept: string;
-  /** "single" allows only ONE pdf or replaces images with a single pdf etc */
-  mode: "questions" | "side"; // questions = pdf-or-images, side = images only
   variant?: "tall" | "compact";
   title?: string;
   hint?: string;
-  pasteScopeRef?: React.RefObject<HTMLDivElement>;
 }
 
 function UploadZone({
-  files,
+  files: _files,
   setFiles,
   inputId,
-  accept,
-  mode,
   variant = "tall",
   title,
   hint,
@@ -213,59 +207,13 @@ function UploadZone({
         return;
       }
 
-      if (mode === "questions") {
-        const hasPdfNew = filtered.some((f) => f.type === "application/pdf");
-        const hasPdfOld = files.some((f) => f.file.type === "application/pdf");
-        if (hasPdfNew) {
-          // PDF replaces everything, keep only first PDF
-          const pdf = filtered.find((f) => f.type === "application/pdf")!;
-          const base64 = await fileToBase64(pdf);
-          setFiles([{ file: pdf, base64 }]);
-          if (filtered.length > 1 || files.length > 0) {
-            toast({
-              title: "Đã thay bằng PDF",
-              description:
-                "Vùng câu hỏi chỉ chứa 1 tệp PDF duy nhất hoặc nhiều ảnh.",
-            });
-          }
-          return;
-        }
-        if (hasPdfOld) {
-          toast({
-            title: "Không thể trộn lẫn",
-            description:
-              "Vùng câu hỏi đang chứa PDF, hãy xoá trước khi thêm ảnh.",
-            variant: "destructive",
-          });
-          return;
-        }
-      } else {
-        // side: only images
-        const imgs = filtered.filter((f) => f.type.startsWith("image/"));
-        if (imgs.length === 0) {
-          toast({
-            title: "Chỉ nhận ảnh",
-            description: "Vùng này chỉ chấp nhận ảnh PNG/JPG/WEBP.",
-            variant: "destructive",
-          });
-          return;
-        }
-        const newOnes: FileData[] = [];
-        for (const f of imgs) {
-          newOnes.push({ file: f, base64: await fileToBase64(f) });
-        }
-        setFiles((prev) => [...prev, ...newOnes]);
-        return;
-      }
-
-      // questions mode, all images
       const newOnes: FileData[] = [];
       for (const f of filtered) {
         newOnes.push({ file: f, base64: await fileToBase64(f) });
       }
       setFiles((prev) => [...prev, ...newOnes]);
     },
-    [files, mode, setFiles, toast],
+    [setFiles, toast],
   );
 
   // Paste support, scoped to this zone (focus required) and to the document
@@ -343,7 +291,7 @@ function UploadZone({
         type="file"
         id={inputId}
         multiple
-        accept={accept}
+        accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) handleFiles(Array.from(e.target.files));
@@ -816,11 +764,9 @@ function Home() {
               files={questionFiles}
               setFiles={setQuestionFiles}
               inputId="upload-questions"
-              accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp"
-              mode="questions"
               variant="tall"
               title="Kéo thả, click chọn, hoặc Ctrl+V để dán"
-              hint="Hỗ trợ 1 tệp PDF hoặc nhiều tệp ảnh (PNG, JPG, WEBP)"
+              hint="Nhận nhiều tệp PDF hoặc nhiều ảnh (PNG, JPG, WEBP)"
             />
           </div>
 
@@ -844,116 +790,154 @@ function Home() {
         {/* MIDDLE ROW: Settings | Answer files | Solution files */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Zone 1: Thiết lập đề thi */}
-          <Card className="p-5 flex flex-col gap-4 rounded-2xl">
+          <Card className="p-5 flex flex-col gap-3 rounded-2xl">
             <h2 className="text-lg font-medium flex items-center gap-2">
               <Settings className="h-5 w-5 text-primary" />
               Vùng thiết lập đề thi
             </h2>
 
-            <Button
-              variant="outline"
-              className="justify-between h-11 rounded-xl"
-              onClick={() => {
-                setTempSettings(settings);
-                setShowSettings(true);
-              }}
-            >
-              <span className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                Tinh chỉnh đề
-              </span>
-              <ChevronDown className="h-4 w-4 opacity-50 -rotate-90" />
-            </Button>
+            <div className="grid grid-cols-1 gap-2.5">
+              <Button
+                variant="outline"
+                className="justify-between h-10 rounded-xl"
+                onClick={() => {
+                  setTempSettings(settings);
+                  setShowSettings(true);
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  Tinh chỉnh đề
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-50 -rotate-90" />
+              </Button>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="justify-between h-11 rounded-xl text-left"
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-                    <span className="truncate">
-                      Thiết lập đáp án: {ANSWER_LABEL[answerMode]}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="justify-between h-10 rounded-xl text-left"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                      <span className="truncate">Thiết lập đáp án</span>
+                    </span>
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[320px]">
+                  <DropdownMenuLabel>Thiết lập đáp án</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioGroup
+                    value={answerMode}
+                    onValueChange={(v) => {
+                      const next = v as AnswerMode;
+                      setAnswerMode(next);
+                      if (next === "available" || next === "both") {
+                        toast({
+                          title: "Cần đáp án sẵn có",
+                          description:
+                            "Hãy thêm tệp/ảnh đáp án sẵn có vào vùng đáp án bên cạnh.",
+                        });
+                      }
+                    }}
+                  >
+                    <DropdownMenuRadioItem value="ai">
+                      {ANSWER_LABEL.ai}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="available">
+                      {ANSWER_LABEL.available}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="both">
+                      {ANSWER_LABEL.both}
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="justify-between h-10 rounded-xl text-left"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <BookOpen className="h-4 w-4 text-primary shrink-0" />
+                      <span className="truncate">Thiết lập lời giải</span>
+                    </span>
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[320px]">
+                  <DropdownMenuLabel>Thiết lập lời giải</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioGroup
+                    value={solutionMode}
+                    onValueChange={(v) => {
+                      const next = v as SolutionMode;
+                      setSolutionMode(next);
+                      if (next === "available" || next === "both") {
+                        toast({
+                          title: "Cần lời giải sẵn có",
+                          description:
+                            "Hãy thêm tệp/ảnh lời giải sẵn có vào vùng lời giải bên cạnh.",
+                        });
+                      }
+                    }}
+                  >
+                    <DropdownMenuRadioItem value="ai">
+                      {SOLUTION_LABEL.ai}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="available">
+                      {SOLUTION_LABEL.available}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="both">
+                      {SOLUTION_LABEL.both}
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Visual summary fills remaining vertical space */}
+            <div className="mt-1 flex-1 flex flex-col gap-2 rounded-xl border border-border/60 bg-muted/30 p-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Tóm tắt thiết lập hiện tại
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                <span className="text-muted-foreground">Tên đề</span>
+                <span className="font-medium truncate text-right">
+                  {settings.tende}
+                </span>
+                <span className="text-muted-foreground">Mã đề</span>
+                <span className="font-medium text-right">{settings.made}</span>
+                <span className="text-muted-foreground">Thời gian</span>
+                <span className="font-medium text-right">
+                  {settings.thoigian} phút
+                </span>
+              </div>
+              <div className="border-t border-border/50 my-1" />
+              <div className="flex flex-col gap-1.5 text-sm">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <span className="leading-snug">
+                    <span className="text-muted-foreground">Đáp án: </span>
+                    <span className="font-medium">
+                      {ANSWER_LABEL[answerMode]}
                     </span>
                   </span>
-                  <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[320px]">
-                <DropdownMenuLabel>Thiết lập đáp án</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={answerMode}
-                  onValueChange={(v) => {
-                    const next = v as AnswerMode;
-                    setAnswerMode(next);
-                    if (next === "available" || next === "both") {
-                      toast({
-                        title: "Cần đáp án sẵn có",
-                        description:
-                          "Hãy thêm ảnh/đáp án sẵn có vào vùng đáp án bên cạnh.",
-                      });
-                    }
-                  }}
-                >
-                  <DropdownMenuRadioItem value="ai">
-                    {ANSWER_LABEL.ai}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="available">
-                    {ANSWER_LABEL.available}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="both">
-                    {ANSWER_LABEL.both}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="justify-between h-11 rounded-xl text-left"
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <BookOpen className="h-4 w-4 text-primary shrink-0" />
-                    <span className="truncate">
-                      Thiết lập lời giải: {SOLUTION_LABEL[solutionMode]}
+                </div>
+                <div className="flex items-start gap-2">
+                  <BookOpen className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <span className="leading-snug">
+                    <span className="text-muted-foreground">Lời giải: </span>
+                    <span className="font-medium">
+                      {SOLUTION_LABEL[solutionMode]}
                     </span>
                   </span>
-                  <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[320px]">
-                <DropdownMenuLabel>Thiết lập lời giải</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={solutionMode}
-                  onValueChange={(v) => {
-                    const next = v as SolutionMode;
-                    setSolutionMode(next);
-                    if (next === "available" || next === "both") {
-                      toast({
-                        title: "Cần lời giải sẵn có",
-                        description:
-                          "Hãy thêm ảnh/lời giải sẵn có vào vùng lời giải bên cạnh.",
-                      });
-                    }
-                  }}
-                >
-                  <DropdownMenuRadioItem value="ai">
-                    {SOLUTION_LABEL.ai}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="available">
-                    {SOLUTION_LABEL.available}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="both">
-                    {SOLUTION_LABEL.both}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </div>
+              </div>
+            </div>
           </Card>
 
           {/* Zone 2: Đáp án sẵn có */}
@@ -969,17 +953,15 @@ function Home() {
               files={answerFiles}
               setFiles={setAnswerFiles}
               inputId="upload-answers"
-              accept="image/png,image/jpeg,image/jpg,image/webp"
-              mode="side"
               variant="compact"
-              title="Thêm ảnh đáp án"
-              hint="Kéo thả / click / Ctrl+V — chỉ ảnh"
+              title="Thêm tệp/ảnh đáp án"
+              hint="Kéo thả / click / Ctrl+V — PDF hoặc ảnh"
             />
             <FileList
               files={answerFiles}
               setFiles={setAnswerFiles}
               height="h-[170px]"
-              emptyText="Chưa có ảnh đáp án sẵn có."
+              emptyText="Chưa có tệp/ảnh đáp án sẵn có."
             />
           </Card>
 
@@ -996,17 +978,15 @@ function Home() {
               files={solutionFiles}
               setFiles={setSolutionFiles}
               inputId="upload-solutions"
-              accept="image/png,image/jpeg,image/jpg,image/webp"
-              mode="side"
               variant="compact"
-              title="Thêm ảnh lời giải"
-              hint="Kéo thả / click / Ctrl+V — chỉ ảnh"
+              title="Thêm tệp/ảnh lời giải"
+              hint="Kéo thả / click / Ctrl+V — PDF hoặc ảnh"
             />
             <FileList
               files={solutionFiles}
               setFiles={setSolutionFiles}
               height="h-[170px]"
-              emptyText="Chưa có ảnh lời giải sẵn có."
+              emptyText="Chưa có tệp/ảnh lời giải sẵn có."
             />
           </Card>
         </section>

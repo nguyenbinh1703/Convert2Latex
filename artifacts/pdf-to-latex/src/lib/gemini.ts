@@ -6,7 +6,31 @@ export interface FileData {
 export type AnswerMode = "ai" | "available" | "both";
 export type SolutionMode = "ai" | "available" | "both";
 
-export async function listGeminiModels(apiKey: string): Promise<string[]> {
+// Names that are clearly NOT general-purpose chat / multimodal generators.
+const EXCLUDE_PATTERNS = [
+  /embedding/i,
+  /aqa/i,
+  /tts/i,
+  /image-generation/i,
+  /imagen/i,
+  /-thinking-/i,
+  /learnlm/i,
+];
+
+function isLikelyUsable(name: string): boolean {
+  if (!/gemini/i.test(name)) return false;
+  if (EXCLUDE_PATTERNS.some((re) => re.test(name))) return false;
+  return true;
+}
+
+interface RawModel {
+  name: string;
+  supportedGenerationMethods?: string[];
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+}
+
+async function fetchRawModels(apiKey: string): Promise<RawModel[]> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
   );
@@ -15,32 +39,37 @@ export async function listGeminiModels(apiKey: string): Promise<string[]> {
     throw new Error(errData?.error?.message || `Lỗi HTTP: ${res.status}`);
   }
   const data = await res.json();
-  const models: string[] = (data.models || [])
-    .filter((m: any) =>
+  return (data.models || []) as RawModel[];
+}
+
+/** Light list of all gemini models supporting generateContent. Single network call. */
+export async function listGeminiModels(apiKey: string): Promise<string[]> {
+  const raw = await fetchRawModels(apiKey);
+  return raw
+    .filter((m) =>
       m.name?.includes("gemini") &&
       m.supportedGenerationMethods?.includes("generateContent"),
     )
-    .map((m: any) => String(m.name).replace(/^models\//, ""));
-  return models;
+    .map((m) => m.name.replace(/^models\//, ""));
 }
 
 /**
- * Quickly verify a model is reachable and the key still has quota for it.
- * Sends a minimal generateContent call. Throws on any failure.
+ * Verify a model is reachable AND the key has quota for it.
+ * Uses countTokens (fast, free) instead of generateContent.
+ * Honors AbortSignal so callers can cap latency.
  */
 export async function verifyModel(
   apiKey: string,
   model: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const body = {
-    contents: [{ parts: [{ text: "ping" }] }],
-    generationConfig: { maxOutputTokens: 1, temperature: 0 },
-  };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:countTokens?key=${apiKey}`;
+  const body = { contents: [{ parts: [{ text: "ping" }] }] };
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
@@ -50,20 +79,37 @@ export async function verifyModel(
 }
 
 /**
- * Returns only the models the key can actually invoke right now (quota OK).
- * For each candidate model, runs a tiny verification call in parallel and keeps the ones that succeed.
+ * Returns the set of models actually usable right now.
+ * Strategy for speed + accuracy:
+ *  1. One network call to list metadata.
+ *  2. Pre-filter by name (skip embedding/tts/imagen/etc. and obvious non-chat).
+ *  3. In parallel, ping countTokens for each candidate with a 3.5s timeout.
+ *     countTokens is a cheap, quota-free reachability check that fails fast on 404/403.
  */
 export async function listUsableGeminiModels(
   apiKey: string,
 ): Promise<string[]> {
-  const all = await listGeminiModels(apiKey);
+  const raw = await fetchRawModels(apiKey);
+  const candidates = raw
+    .filter((m) =>
+      m.name &&
+      m.supportedGenerationMethods?.includes("generateContent") &&
+      isLikelyUsable(m.name),
+    )
+    .map((m) => m.name.replace(/^models\//, ""));
+
+  const PER_CALL_TIMEOUT_MS = 3500;
   const checks = await Promise.all(
-    all.map(async (m) => {
+    candidates.map(async (m) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), PER_CALL_TIMEOUT_MS);
       try {
-        await verifyModel(apiKey, m);
+        await verifyModel(apiKey, m, ctrl.signal);
         return m;
       } catch {
         return null;
+      } finally {
+        clearTimeout(t);
       }
     }),
   );
@@ -71,12 +117,13 @@ export async function listUsableGeminiModels(
 }
 
 const TASK_BLOCK = `1. Đọc kĩ từng câu hỏi trong đề.
-2. Phân loại mỗi câu hỏi vào MỘT trong ba dạng sau:
+2. Phân loại mỗi câu hỏi vào MỘT trong bốn dạng sau:
    a) Trắc nghiệm lựa chọn (4 phương án A, B, C, D, chỉ 1 đáp án đúng).
    b) Trắc nghiệm đúng/sai (4 mệnh đề a, b, c, d, mỗi mệnh đề có thể đúng hoặc sai).
    c) Trắc nghiệm trả lời ngắn (yêu cầu điền số hoặc biểu thức ngắn gọn).
+   d) Tự luận (câu hỏi mở, không có 4 phương án và không phải trả lời ngắn — yêu cầu trình bày bài giải).
 
-3. Xuất mã LaTeX tương ứng cho từng câu, bọc trong môi trường \`ex\`, mỗi phương án trên một dòng riêng:
+3. Xuất mã LaTeX tương ứng cho từng câu, bọc trong môi trường \`ex\` (cho a, b, c) hoặc môi trường \`bt\` (cho d - tự luận), mỗi phương án trên một dòng riêng:
 
    Với LỰA CHỌN:
    \\begin{ex}
@@ -107,6 +154,12 @@ const TASK_BLOCK = `1. Đọc kĩ từng câu hỏi trong đề.
        \\loigiai{<hướng giải tóm tắt theo các bước>}
    \\end{ex}
 
+   Với TỰ LUẬN:
+   \\begin{bt}
+       <nội dung câu hỏi>
+       \\loigiai{<lời giải đầy đủ theo từng bước>}
+   \\end{bt}
+
 4. YÊU CẦU QUAN TRỌNG:
    - Đánh dấu đáp án đúng:
      + Trắc nghiệm lựa chọn: Đặt \`\\True \` trước nội dung phương án đúng (VD: {\\True 10}). Chính xác 1 \`\\True\`.
@@ -118,13 +171,15 @@ const TASK_BLOCK = `1. Đọc kĩ từng câu hỏi trong đề.
    - Xóa watermark, header, footer.
    - KHÔNG tự đánh số "Câu 1:". Chỉ thêm comment \`% Câu N\` trước \`\\begin{ex}\`.
 
-5. NHÓM KẾT QUẢ: Phân thành 3 phần, cách nhau bằng các comment sau (BẮT BUỘC, đúng nguyên văn):
+5. NHÓM KẾT QUẢ: Phân thành 4 phần, cách nhau bằng các comment sau (BẮT BUỘC, đúng nguyên văn). Nếu một phần không có câu hỏi nào, vẫn in dòng comment đó nhưng để trống bên dưới:
    % --- TRẮC NGHIỆM LỰA CHỌN ---
    <các khối ex lựa chọn>
    % --- TRẮC NGHIỆM ĐÚNG/SAI ---
    <các khối ex đúng sai>
    % --- TRẮC NGHIỆM TRẢ LỜI NGẮN ---
    <các khối ex trả lời ngắn>
+   % --- TỰ LUẬN ---
+   <các khối bt tự luận>
 
 LƯU Ý: Trả về CHỈ MÃ LATEX. KHÔNG dùng markdown code block, KHÔNG giải thích thêm.`;
 
@@ -242,6 +297,50 @@ export async function convertToLatex(
   return text.replace(/^```(latex)?\n?/, "").replace(/\n?```$/, "").trim();
 }
 
+/**
+ * Removes a whole `\begin{envName}{label} ... \end{envName}` block from `doc`
+ * matching the given label. Tolerates inner whitespace and multi-line content.
+ */
+function stripEnvBlock(doc: string, envName: string, label: string): string {
+  const re = new RegExp(
+    String.raw`[ \t]*\\begin\{` +
+      envName +
+      String.raw`\}\{` +
+      label +
+      String.raw`\}[\s\S]*?\\end\{` +
+      envName +
+      String.raw`\}[ \t]*\r?\n?`,
+    "g",
+  );
+  return doc.replace(re, "");
+}
+
+/**
+ * Inside a `\begin{kvdemEX}{label} ... \end{kvdemEX}` block, returns true
+ * if the body contains no real ex content (no \begin{ex} appearing).
+ */
+function isEnvEmpty(doc: string, envName: string, label: string): boolean {
+  const re = new RegExp(
+    String.raw`\\begin\{` +
+      envName +
+      String.raw`\}\{` +
+      label +
+      String.raw`\}([\s\S]*?)\\end\{` +
+      envName +
+      String.raw`\}`,
+  );
+  const m = doc.match(re);
+  if (!m) return true;
+  const body = m[1];
+  // Strip Opensolutionfile/Closesolutionfile lines and the placeholder comment.
+  const stripped = body
+    .replace(/\\Opensolutionfile\{[^}]*\}\[[^\]]*\]/g, "")
+    .replace(/\\Closesolutionfile\{[^}]*\}/g, "")
+    .replace(/%[^\n]*/g, "")
+    .trim();
+  return stripped.length === 0;
+}
+
 export function assembleLatex(
   template: string,
   tende: string,
@@ -267,7 +366,10 @@ export function assembleLatex(
       .split("% --- TRẮC NGHIỆM ĐÚNG/SAI ---")[1]
       ?.split("% --- TRẮC NGHIỆM TRẢ LỜI NGẮN ---")[0] || "";
   const tlnMatch =
-    geminiOutput.split("% --- TRẮC NGHIỆM TRẢ LỜI NGẮN ---")[1] || "";
+    geminiOutput
+      .split("% --- TRẮC NGHIỆM TRẢ LỜI NGẮN ---")[1]
+      ?.split("% --- TỰ LUẬN ---")[0] || "";
+  const tlMatch = geminiOutput.split("% --- TỰ LUẬN ---")[1] || "";
 
   doc = doc.replace(
     "% Nội dung các câu hỏi trắc nghiệm lựa chọn",
@@ -281,6 +383,39 @@ export function assembleLatex(
     "% Nội dung các câu hỏi trắc nghiệm trả lời ngắn",
     tlnMatch.trim(),
   );
+  doc = doc.replace("% Nội dung các câu hỏi tự luận", tlMatch.trim());
+
+  // Drop any section block that ended up empty.
+  const sections: { env: string; label: string; key: string }[] = [
+    { env: "kvdemEX", label: "tn", key: "tn" },
+    { env: "kvdemEX", label: "ds", key: "ds" },
+    { env: "kvdemEX", label: "tln", key: "tln" },
+    { env: "kvdemBT", label: "tl", key: "tl" },
+  ];
+
+  const presentLabels: string[] = [];
+  for (const s of sections) {
+    if (isEnvEmpty(doc, s.env, s.label)) {
+      doc = stripEnvBlock(doc, s.env, s.label);
+    } else {
+      presentLabels.push(s.label);
+    }
+  }
+
+  // Rebuild \thongtin so it only references sections that still exist
+  // (otherwise \ref{tn} on a removed label produces "??" in the PDF).
+  const partsLabel: Record<string, string> = {
+    tn: "câu trắc nghiệm",
+    ds: "câu đúng/sai",
+    tln: "câu trả lời ngắn",
+    tl: "câu tự luận",
+  };
+  const thongtinParts = presentLabels.map(
+    (l) => `\\ref{${l}} ${partsLabel[l]}`,
+  );
+  const newThongtin =
+    thongtinParts.length > 0 ? `(${thongtinParts.join(", ")})` : "";
+  doc = doc.replace(/\\def\\thongtin\{.*?\}/, `\\def\\thongtin{${newThongtin}}`);
 
   return doc;
 }
