@@ -499,7 +499,7 @@ export function assembleLatex(
     (p) => `${presentSet.has(p.key) ? `\\ref{${p.key}}` : "0"} ${p.name}`,
   );
   const newThongtin = `(${thongtinParts.join(", ")})`;
-  doc = doc.replace(/\\def\\thongtin\{.*?\}/, `\\def\\thongtin{${newThongtin}}`);
+  doc = doc.replace(/\\def\\thongtin\{[^\n]*/, `\\def\\thongtin{${newThongtin}}`);
 
   return doc;
 }
