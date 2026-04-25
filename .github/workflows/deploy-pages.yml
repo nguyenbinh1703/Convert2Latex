@@ -34,17 +34,14 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build
         working-directory: artifacts/pdf-to-latex
         run: pnpm build:standalone
         env:
           NODE_ENV: production
-          # BASE_PATH: /ten-repo-cua-ban/
-          # Nếu deploy lên https://username.github.io/ten-repo/
-          # thì bỏ comment dòng trên và thay "ten-repo-cua-ban" bằng tên repo của bạn.
-          # Nếu dùng custom domain (https://example.com) thì để nguyên (BASE_PATH mặc định là /).
+          BASE_PATH: /Convert2Latex/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
