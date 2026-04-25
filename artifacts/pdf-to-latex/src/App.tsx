@@ -524,6 +524,7 @@ function ModelPicker({
   setSelectedModel,
   verifiedModel,
   onVerified,
+  onError,
 }: {
   apiKey: string;
   models: string[];
@@ -531,9 +532,11 @@ function ModelPicker({
   setSelectedModel: (m: string) => void;
   verifiedModel: string | null;
   onVerified: (m: string | null) => void;
+  onError?: (title: string, message: string) => void;
 }) {
   const { toast } = useToast();
   const [verifyingModel, setVerifyingModel] = useState<string | null>(null);
+  const [unavailableModels, setUnavailableModels] = useState<Set<string>>(new Set());
 
   const pickModel = async (m: string) => {
     setVerifyingModel(m);
@@ -541,20 +544,34 @@ function ModelPicker({
       await verifyModel(apiKey, m);
       setSelectedModel(m);
       onVerified(m);
+      setUnavailableModels((prev) => { const s = new Set(prev); s.delete(m); return s; });
       localStorage.setItem("gemini_model", m);
       toast({
         title: "Kết nối thành công",
-        description: `Đã kết nối đến model ${m} đã chọn.`,
+        description: `Đã kết nối đến model ${m}.`,
       });
     } catch (err: any) {
       onVerified(null);
-      toast({
-        title: "Không khả dụng",
-        description: `${m} hiện không khả dụng${
-          err?.message ? `: ${err.message}` : ""
-        }`,
-        variant: "destructive",
-      });
+      setUnavailableModels((prev) => new Set(prev).add(m));
+      const errMsg: string = err?.message || String(err);
+      const isQuota =
+        errMsg.toLowerCase().includes("quota") ||
+        errMsg.toLowerCase().includes("resource exhausted") ||
+        errMsg.includes("429") ||
+        errMsg.toLowerCase().includes("rate limit") ||
+        errMsg.toLowerCase().includes("exceeded");
+      const title = isQuota
+        ? `Model không khả dụng — Hết quota / Rate limit`
+        : `Model không khả dụng`;
+      if (onError) {
+        onError(`${title}: ${m}`, errMsg);
+      } else {
+        toast({
+          title,
+          description: `${m}: ${errMsg.slice(0, 120)}${errMsg.length > 120 ? "…" : ""}`,
+          variant: "destructive",
+        });
+      }
     } finally {
       setVerifyingModel(null);
     }
@@ -590,23 +607,31 @@ function ModelPicker({
                 Chưa có dữ liệu. Bấm "Kiểm tra" trước.
               </div>
             )}
-            {models.map((m) => (
-              <button
-                key={m}
-                onClick={() => pickModel(m)}
-                disabled={verifyingModel !== null}
-                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-md hover:bg-muted transition-colors text-sm"
-              >
-                {verifyingModel === m ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                ) : verifiedModel === m ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                ) : (
-                  <span className="h-4 w-4 rounded-full border border-muted-foreground/30" />
-                )}
-                <span className="truncate flex-1">{m}</span>
-              </button>
-            ))}
+            {models.map((m) => {
+              const isUnavailable = unavailableModels.has(m);
+              return (
+                <button
+                  key={m}
+                  onClick={() => pickModel(m)}
+                  disabled={verifyingModel !== null}
+                  className={`flex items-center gap-2 w-full text-left px-3 py-2 rounded-md hover:bg-muted transition-colors text-sm ${isUnavailable ? "opacity-50" : ""}`}
+                >
+                  {verifyingModel === m ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                  ) : verifiedModel === m ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  ) : isUnavailable ? (
+                    <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                  ) : (
+                    <span className="h-4 w-4 rounded-full border border-muted-foreground/30 shrink-0" />
+                  )}
+                  <span className="truncate flex-1">{m}</span>
+                  {isUnavailable && (
+                    <span className="text-xs text-destructive shrink-0">Hết quota</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </ScrollArea>
       </PopoverContent>
@@ -1001,6 +1026,7 @@ function Home() {
               setSelectedModel={setSelectedModel}
               verifiedModel={verifiedModel}
               onVerified={setVerifiedModel}
+              onError={(title, message) => setCriticalError({ title, message })}
             />
 
             <div className="relative flex-1 max-w-[260px]">
