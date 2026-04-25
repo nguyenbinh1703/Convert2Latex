@@ -271,6 +271,7 @@ function buildPrompt(
   solutionMode: SolutionMode,
   hasAnswerFiles: boolean,
   hasSolutionFiles: boolean,
+  additionalPrompt?: string,
 ): string {
   const intro = `Bạn là một công cụ chuyển đổi đề thi thành mã LaTeX chuyên nghiệp.
 Đầu vào của bạn gồm các nhóm hình ảnh / tệp được liệt kê tuần tự bên dưới với nhãn rõ ràng. Hãy đọc và sử dụng đúng từng nhóm:
@@ -303,7 +304,11 @@ function buildPrompt(
     solutionInstr = `\n- Lời giải (\\loigiai): ƯU TIÊN dùng nội dung từ NHÓM LỜI GIẢI SẴN CÓ cho những câu có. Câu nào KHÔNG có trong nhóm sẵn có thì tự viết hướng giải tóm tắt.`;
   }
 
-  return `${intro}\n\nCHIẾN LƯỢC TRẢ LỜI:${answerInstr}${solutionInstr}\n\nNHIỆM VỤ CHI TIẾT:\n${TASK_BLOCK}`;
+  let result = `${intro}\n\nCHIẾN LƯỢC TRẢ LỜI:${answerInstr}${solutionInstr}\n\nNHIỆM VỤ CHI TIẾT:\n${TASK_BLOCK}`;
+  if (additionalPrompt?.trim()) {
+    result += `\n\nMÔ TẢ BỔ SUNG TỪ NGƯỜI DÙNG (ưu tiên thực hiện theo yêu cầu này nếu không mâu thuẫn với cấu trúc LaTeX bắt buộc):\n${additionalPrompt.trim()}`;
+  }
+  return result;
 }
 
 function fileToInlinePart(f: FileData) {
@@ -323,6 +328,7 @@ export async function convertToLatex(
   solutionFiles: FileData[],
   answerMode: AnswerMode,
   solutionMode: SolutionMode,
+  additionalPrompt?: string,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const hasAnswerFiles =
@@ -337,6 +343,7 @@ export async function convertToLatex(
     solutionMode,
     hasAnswerFiles,
     hasSolutionFiles,
+    additionalPrompt,
   );
 
   const parts: any[] = [{ text: prompt }];

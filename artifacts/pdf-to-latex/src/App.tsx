@@ -46,6 +46,7 @@ import {
   ZoomIn,
   ZoomOut,
   AlertTriangle,
+  MessageSquarePlus,
 } from "lucide-react";
 import { ScrollArea } from "./components/ui/scroll-area";
 import {
@@ -674,6 +675,9 @@ function Home() {
     [solutionMode],
   );
 
+  // Additional prompt
+  const [additionalPrompt, setAdditionalPrompt] = useState("");
+
   // Conversion
   const [isConverting, setIsConverting] = useState(false);
   const [latexOutput, setLatexOutput] = useState("");
@@ -730,8 +734,8 @@ function Home() {
         msg.includes("403")
       ) {
         setCriticalError({
-          title: "CÓ LỖI XUẤT HIỆN Ở API KEY!",
-          message: "VUI LÒNG KIỂM TRA LẠI",
+          title: "Lỗi xác thực API Key (HTTP 401/403)",
+          message: msg,
         });
       } else if (
         msg.includes("Failed to fetch") ||
@@ -741,13 +745,12 @@ function Home() {
         msg.includes("ERR_INTERNET")
       ) {
         setCriticalError({
-          title: "CÓ LỖI MẤT KẾT NỐI XUẤT HIỆN!",
-          message:
-            "VUI LÒNG TRUY CẬP TRỰC TIẾP TRANG GEMINI ĐỂ KIỂM TRA",
+          title: "Lỗi kết nối mạng",
+          message: msg,
         });
       } else {
         setCriticalError({
-          title: "CÓ LỖI NỘI BỘ XUẤT HIỆN, VUI LÒNG KIỂM TRA LẠI",
+          title: "Lỗi không xác định khi kiểm tra API Key",
           message: msg,
         });
       }
@@ -830,6 +833,7 @@ function Home() {
         solutionFiles,
         answerMode,
         solutionMode,
+        additionalPrompt,
       );
       if (!output || output.trim() === "") {
         throw new Error("Gemini không trả về kết quả hợp lệ. Hãy thử lại.");
@@ -858,8 +862,8 @@ function Home() {
         msg.toLowerCase().includes("invalid api key")
       ) {
         setCriticalError({
-          title: "CÓ LỖI XUẤT HIỆN Ở API KEY!",
-          message: "VUI LÒNG KIỂM TRA LẠI",
+          title: "Lỗi xác thực API Key (HTTP 401/403)",
+          message: msg,
         });
       } else if (
         msg.includes("Failed to fetch") ||
@@ -870,9 +874,8 @@ function Home() {
         msg.toLowerCase().includes("net::err")
       ) {
         setCriticalError({
-          title: "CÓ LỖI MẤT KẾT NỐI XUẤT HIỆN!",
-          message:
-            "VUI LÒNG TRUY CẬP TRỰC TIẾP TRANG GEMINI ĐỂ KIỂM TRA",
+          title: "Lỗi kết nối mạng",
+          message: msg,
         });
       } else if (
         msg.includes("413") ||
@@ -884,13 +887,12 @@ function Home() {
         msg.toLowerCase().includes("overloaded")
       ) {
         setCriticalError({
-          title: "CÓ LỖI XUẤT HIỆN Ở VIỆC XỬ LÝ TRONG GEMINI!",
-          message:
-            "VUI LÒNG KIỂM TRA LẠI CÁC FILE PDF/ẢNH ĐƯỢC ĐÍNH KÈM",
+          title: "Lỗi quota / kích thước tệp (Gemini API)",
+          message: msg,
         });
       } else {
         setCriticalError({
-          title: "CÓ LỖI NỘI BỘ XUẤT HIỆN, VUI LÒNG KIỂM TRA LẠI",
+          title: "Lỗi khi chuyển đổi",
           message: msg,
         });
       }
@@ -1271,6 +1273,35 @@ function Home() {
           </Card>
         </section>
 
+        {/* ADDITIONAL PROMPT */}
+        <section className="flex flex-col gap-3">
+          <h2 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+            <MessageSquarePlus className="h-5 w-5 text-primary" />
+            Mô tả bổ sung AI
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              (tuỳ chọn)
+            </span>
+          </h2>
+          <div className="relative rounded-xl border border-border/60 bg-muted/20 overflow-hidden shadow-inner">
+            <textarea
+              className="w-full min-h-[90px] max-h-[200px] p-4 text-sm leading-relaxed bg-transparent resize-y focus:outline-none placeholder:text-muted-foreground/60"
+              placeholder="Nhập mô tả bổ sung để hướng dẫn AI thêm... Ví dụ: &quot;Chỉ lấy phần trắc nghiệm lựa chọn&quot;, &quot;Bỏ qua câu tự luận&quot;, &quot;Ghi chú nguồn gốc từng câu&quot;..."
+              value={additionalPrompt}
+              onChange={(e) => setAdditionalPrompt(e.target.value)}
+              spellCheck={false}
+            />
+            {additionalPrompt && (
+              <button
+                className="absolute top-2 right-2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                onClick={() => setAdditionalPrompt("")}
+                title="Xoá nội dung"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </section>
+
         {/* CONVERT BUTTON */}
         <section className="flex justify-center py-2">
           <Button
@@ -1335,19 +1366,21 @@ function Home() {
         open={!!criticalError}
         onOpenChange={(open) => !open && setCriticalError(null)}
       >
-        <DialogContent className="sm:max-w-[480px] rounded-2xl border-destructive/50">
+        <DialogContent className="sm:max-w-[520px] rounded-2xl border-destructive/50">
           <DialogHeader className="items-center text-center gap-3 pt-2">
-            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
-              <AlertTriangle className="h-8 w-8 text-destructive" />
+            <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertTriangle className="h-7 w-7 text-destructive" />
             </div>
-            <DialogTitle className="text-lg font-bold text-destructive leading-snug text-center">
+            <DialogTitle className="text-base font-bold text-destructive leading-snug text-center">
               {criticalError?.title}
             </DialogTitle>
           </DialogHeader>
-          <div className="text-center py-2">
-            <p className="text-sm font-medium text-foreground whitespace-pre-line">
-              {criticalError?.message}
-            </p>
+          <div className="py-2">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 max-h-[200px] overflow-y-auto">
+              <p className="text-xs font-mono text-foreground/80 whitespace-pre-wrap break-all leading-relaxed">
+                {criticalError?.message}
+              </p>
+            </div>
           </div>
           <DialogFooter className="justify-center">
             <Button
